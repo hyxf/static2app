@@ -66,8 +66,11 @@ runs:
 
         echo "📦 Embedding static assets from ${{ inputs.dist-dir }}"
 
-        # Clear the static directory in the action source
-        rm -rf static2app-src/static/*
+        # 1. 先删除旧的 static 目录（如果存在），确保干净
+        rm -rf static2app-src/static
+
+        # 2. 【关键修复】显式创建目录，防止 cp 报错
+        mkdir -p static2app-src/static
 
         # Copy user's built assets
         cp -R ${{ inputs.dist-dir }}/* static2app-src/static/
