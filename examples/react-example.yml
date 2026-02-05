@@ -1,55 +1,31 @@
-# Example workflow for React applications
-# Place this file in .github/workflows/build.yml
-
-name: Build React Desktop App
-
+name: Publish to npm (OIDC)
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
-
+      - "v*"
+permissions:
+  contents: write
+  id-token: write
+  packages: write
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests (optional)
-        run: npm test -- --passWithNoTests
-
-      - name: Build React app
-        run: npm run build
-        env:
-          CI: true
-          # If using environment variables for API endpoints, set them here:
-          # REACT_APP_API_URL: https://api.example.com
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - run: npm install
+      - run: npm run build
 
       - name: Package with Static2App
         id: package
         uses: hyxf/static2app/action@v1
         with:
-          dist-dir: build
-          binary-name: my-react-app
+          dist-dir: dist
+          binary-name: svg-editor
           # version: 1.0.0  # Optional: override git tag
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: react-app-binaries
-          path: ${{ steps.package.outputs.dist-dir }}
-          retention-days: 30
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
