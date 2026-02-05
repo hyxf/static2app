@@ -66,17 +66,20 @@ runs:
 
         echo "📦 Embedding static assets from ${{ inputs.dist-dir }}"
 
-        # 1. 先删除旧的 static 目录（如果存在），确保干净
-        rm -rf static2app-src/static
+        # 定义目标路径
+        TARGET_DIR="static2app-src/static"
 
-        # 2. 【关键修复】显式创建目录，防止 cp 报错
-        mkdir -p static2app-src/static
+        # 1. 强制清理旧目录（如果存在）
+        rm -rf "$TARGET_DIR"
 
-        # Copy user's built assets
-        cp -R ${{ inputs.dist-dir }}/* static2app-src/static/
+        # 2. 显式创建目录（修复 cp 报错的关键）
+        mkdir -p "$TARGET_DIR"
 
-        echo "✅ Static assets prepared:"
-        ls -lh static2app-src/static/ | head -10
+        # 3. 复制用户资源文件到 Action 源码目录
+        cp -R ${{ inputs.dist-dir }}/* "$TARGET_DIR/"
+
+        echo "✅ Static assets prepared in $TARGET_DIR"
+        ls -lh "$TARGET_DIR" | head -10
 
     - name: Build & package binaries
       shell: bash
@@ -111,6 +114,7 @@ runs:
 
           echo "🔨 Building $GOOS/$GOARCH"
 
+          # CGO_ENABLED=0 是为了确保静态链接，不依赖系统 glibc
           CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
             go build \
               -ldflags "-s -w -X main.Version=${VERSION}" \
