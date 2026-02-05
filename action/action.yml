@@ -1,0 +1,167 @@
+name: static2app packer
+description: Package pre-built static web assets into cross-platform standalone binaries
+author: hyxf
+
+branding:
+  icon: package
+  color: blue
+
+inputs:
+  dist-dir:
+    description: Directory containing pre-built static assets (must contain index.html)
+    required: true
+
+  binary-name:
+    description: Base name of the output binary (without extension)
+    required: true
+
+  version:
+    description: Version string to embed into binary (overrides git tag)
+    required: false
+
+outputs:
+  dist-dir:
+    description: Directory containing packaged artifacts (dist/pkg)
+    value: ${{ steps.set-output.outputs.dist-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        set -e
+
+        if [ ! -d "${{ inputs.dist-dir }}" ]; then
+          echo "❌ Error: dist directory not found: ${{ inputs.dist-dir }}"
+          exit 1
+        fi
+
+        if [ ! -f "${{ inputs.dist-dir }}/index.html" ]; then
+          echo "❌ Error: index.html not found in ${{ inputs.dist-dir }}"
+          exit 1
+        fi
+
+        echo "✅ Input validation passed"
+        echo "  - dist-dir: ${{ inputs.dist-dir }}"
+        echo "  - binary-name: ${{ inputs.binary-name }}"
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.22"
+        cache: true
+
+    - name: Checkout static2app source
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.action_repository }}
+        path: static2app-src
+        ref: ${{ github.action_ref }}
+
+    - name: Prepare static assets
+      shell: bash
+      run: |
+        set -e
+
+        echo "📦 Embedding static assets from ${{ inputs.dist-dir }}"
+
+        # Clear the static directory in the action source
+        rm -rf static2app-src/static/*
+
+        # Copy user's built assets
+        cp -R ${{ inputs.dist-dir }}/* static2app-src/static/
+
+        echo "✅ Static assets prepared:"
+        ls -lh static2app-src/static/ | head -10
+
+    - name: Build & package binaries
+      shell: bash
+      working-directory: static2app-src
+      run: |
+        set -e
+
+        mkdir -p dist/bin dist/pkg
+
+        # -------- Version resolution --------
+        if [ -n "${{ inputs.version }}" ]; then
+          VERSION="${{ inputs.version }}"
+        elif [ -n "${GITHUB_REF_NAME}" ]; then
+          # Remove 'v' prefix if present (v1.2.3 -> 1.2.3)
+          VERSION=$(echo "${GITHUB_REF_NAME}" | sed 's/^v//')
+        else
+          VERSION="dev"
+        fi
+
+        echo "🔖 Build version: ${VERSION}"
+
+        # -------- Build function --------
+        build() {
+          local GOOS=$1
+          local GOARCH=$2
+          local EXT=$3
+          local PKG_EXT=$4
+
+          local NAME="${{ inputs.binary-name }}-${VERSION}-${GOOS}-${GOARCH}"
+          local BIN="dist/bin/${NAME}${EXT}"
+          local PKG="dist/pkg/${NAME}.${PKG_EXT}"
+
+          echo "🔨 Building $GOOS/$GOARCH"
+
+          CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH \
+            go build \
+              -ldflags "-s -w -X main.Version=${VERSION}" \
+              -trimpath \
+              -o "${BIN}"
+
+          echo "📦 Packaging ${PKG}"
+
+          if [ "${PKG_EXT}" = "zip" ]; then
+            (cd dist/bin && zip -q "../pkg/${NAME}.zip" "$(basename ${BIN})")
+          else
+            (cd dist/bin && tar -czf "../pkg/${NAME}.tar.gz" "$(basename ${BIN})")
+          fi
+          
+          echo "  ✅ Created: $(basename ${PKG}) ($(du -h ${PKG} | cut -f1))"
+        }
+
+        # -------- Build all platforms --------
+        build darwin amd64 "" tar.gz
+        build darwin arm64 "" tar.gz
+        build linux amd64 "" tar.gz
+        build linux arm64 "" tar.gz
+        build windows amd64 ".exe" zip
+
+    - name: Verify build outputs
+      shell: bash
+      working-directory: static2app-src
+      run: |
+        set -e
+
+        echo "📋 Build artifacts:"
+        ls -lh dist/pkg/
+
+        ARTIFACT_COUNT=$(ls dist/pkg/ | wc -l)
+        if [ "$ARTIFACT_COUNT" -lt 5 ]; then
+          echo "❌ Expected 5 platform builds, got $ARTIFACT_COUNT"
+          exit 1
+        fi
+
+        echo "✅ All $ARTIFACT_COUNT artifacts created successfully"
+
+    - name: Generate checksums
+      shell: bash
+      working-directory: static2app-src
+      run: |
+        set -e
+        cd dist/pkg
+        sha256sum * > checksums.txt
+        echo "✅ Checksums generated:"
+        cat checksums.txt
+
+    - name: Set output
+      id: set-output
+      shell: bash
+      run: |
+        echo "dist-dir=static2app-src/dist/pkg" >> $GITHUB_OUTPUT
+        echo "✅ Output directory: static2app-src/dist/pkg"

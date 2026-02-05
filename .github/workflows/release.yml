@@ -1,0 +1,59 @@
+name: Release Action
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Validate action.yml
+        run: |
+          if [ ! -f action/action.yml ]; then
+            echo "❌ action/action.yml not found"
+            exit 1
+          fi
+          echo "✅ action.yml exists"
+
+      - name: Self test (build)
+        run: |
+          set -e
+          
+          # Create demo static files
+          mkdir -p demo-dist
+          echo '<h1>Test Build</h1>' > demo-dist/index.html
+          
+          # Clear and copy to static directory
+          rm -rf static/*
+          cp -R demo-dist/* static/
+          
+          # Build for current platform
+          GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.Version=test" -o /tmp/static2app-test
+          
+          # Test help output
+          /tmp/static2app-test -version || true
+          
+          echo "✅ Self test passed"
+
+      - name: Update major version tag (v1)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f v1
+          git push origin v1 --force
+          echo "✅ Updated v1 tag"

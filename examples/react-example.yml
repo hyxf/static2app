@@ -1,0 +1,62 @@
+# Example workflow for React applications
+# Place this file in .github/workflows/build.yml
+
+name: Build React Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests (optional)
+        run: npm test -- --passWithNoTests
+
+      - name: Build React app
+        run: npm run build
+        env:
+          CI: true
+          # If using environment variables for API endpoints, set them here:
+          # REACT_APP_API_URL: https://api.example.com
+
+      - name: Package with Static2App
+        id: package
+        uses: hyxf/static2app/action@v1
+        with:
+          dist-dir: build
+          binary-name: my-react-app
+          # version: 1.0.0  # Optional: override git tag
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-app-binaries
+          path: ${{ steps.package.outputs.dist-dir }}
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            ${{ steps.package.outputs.dist-dir }}/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true

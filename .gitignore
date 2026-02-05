@@ -1,0 +1,6 @@
+build/
+vendor/
+# Added by goreleaser init:
+dist/
+*.log
+.DS_Store
