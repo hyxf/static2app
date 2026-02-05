@@ -81,6 +81,18 @@ runs:
         echo "✅ Static assets prepared in $TARGET_DIR"
         ls -lh "$TARGET_DIR" | head -10
 
+    - name: 🔍 Debug - List files
+      shell: bash
+      working-directory: static2app-src
+      run: |
+        echo "📂 Current directory (static2app-src):"
+        pwd
+        echo "📄 File list:"
+        ls -la
+
+        echo "🔍 Searching for go.mod recursively:"
+        find . -name "go.mod"
+
     - name: Build & package binaries
       shell: bash
       working-directory: static2app-src
