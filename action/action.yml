@@ -55,7 +55,7 @@ runs:
     - name: Checkout static2app source
       uses: actions/checkout@v4
       with:
-        repository: ${{ github.action_repository }}
+        repository: hyxf/static2app
         path: static2app-src
         ref: ${{ github.action_ref }}
 
