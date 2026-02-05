@@ -57,7 +57,7 @@ runs:
       with:
         repository: hyxf/static2app
         path: static2app-src
-        ref: ${{ github.action_ref }}
+        ref: v1
 
     - name: Prepare static assets
       shell: bash
