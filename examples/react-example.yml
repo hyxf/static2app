@@ -1,4 +1,4 @@
-name: Publish to npm (OIDC)
+name: Package with Static2App
 on:
   push:
     tags:
