@@ -4,3 +4,4 @@ vendor/
 dist/
 *.log
 .DS_Store
+target/

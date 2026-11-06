@@ -5,10 +5,9 @@ on:
       - "v*"
 permissions:
   contents: write
-  id-token: write
-  packages: write
 jobs:
   publish:
+    # Use a native runner for each platform you want to publish.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
