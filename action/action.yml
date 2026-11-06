@@ -71,7 +71,7 @@ runs:
           [ -n "$version" ] || version="dev"
         fi
         target="$(rustc -vV | sed -n 's/^host: //p')"
-        STATIC2APP_VERSION="$version" cargo build --release
+        STATIC2APP_VERSION="$version" cargo build --release --locked
         mkdir -p dist/pkg
         suffix=""
         case "$target" in

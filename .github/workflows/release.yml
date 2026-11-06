@@ -9,11 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    name: Validate Rust build and update major tag
+  validate:
+    name: Validate action metadata and build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,18 +19,27 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Validate Action manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f action/action.yml
-          echo "action/action.yml exists"
+      - name: Validate Action metadata
+        uses: mpalmer/action-validator@v0.9.0
+        with:
+          version: 0.9.0
+          patterns: action/action.yml
 
       - name: Build Rust executable
         run: cargo build --release --locked
 
+  update-major-tag:
+    name: Update v1 major tag
+    needs: validate
+    if: startsWith(github.ref_name, 'v1.')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Update v1 major tag
-        if: startsWith(github.ref_name, 'v1.')
         shell: bash
         run: |
           set -euo pipefail

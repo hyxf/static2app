@@ -80,7 +80,8 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         }
 
         let value = if arg == "--port" {
-            args.next().ok_or_else(|| "--port requires a value".to_owned())?
+            args.next()
+                .ok_or_else(|| "--port requires a value".to_owned())?
         } else if let Some(value) = arg.strip_prefix("--port=") {
             value.to_owned()
         } else {
@@ -90,11 +91,10 @@ fn parse_args(args: impl IntoIterator<Item = String>) -> Result<CliCommand, Stri
         if port.is_some() {
             return Err("--port may only be specified once".to_owned());
         }
-        port = Some(
-            value
-                .parse::<u16>()
-                .map_err(|_| format!("invalid port '{value}'; expected a number from 0 to 65535"))?,
-        );
+        port =
+            Some(value.parse::<u16>().map_err(|_| {
+                format!("invalid port '{value}'; expected a number from 0 to 65535")
+            })?);
     }
 
     Ok(CliCommand::Run(port.unwrap_or(0)))
@@ -127,7 +127,10 @@ fn open_browser(url: &str) -> std::io::Result<()> {
 
 #[cfg(target_os = "windows")]
 fn open_browser(url: &str) -> std::io::Result<()> {
-    Command::new("cmd").args(["/C", "start", "", url]).spawn().map(|_| ())
+    Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn()
+        .map(|_| ())
 }
 
 fn serve(request: Request) {
@@ -137,7 +140,12 @@ fn serve(request: Request) {
     }
 
     let method = request.method().clone();
-    let path = request.url().split('?').next().unwrap_or("/").trim_start_matches('/');
+    let raw_path = request.url().split('?').next().unwrap_or("/");
+    let Some(decoded_path) = percent_decode_path(raw_path) else {
+        let _ = request.respond(Response::empty(StatusCode(400)));
+        return;
+    };
+    let path = decoded_path.trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
     let mut asset = Assets::get(path);
     let mut resolved_path = path;
@@ -167,7 +175,7 @@ fn serve(request: Request) {
     } else {
         body
     })
-        .with_status_code(200);
+    .with_status_code(200);
     let response = headers
         .into_iter()
         .fold(response, |response, header| response.with_header(header));
@@ -178,23 +186,83 @@ fn respond_not_found(request: Request) {
     let _ = request.respond(Response::empty(StatusCode(404)));
 }
 
+fn percent_decode_path(path: &str) -> Option<String> {
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = *bytes.get(index + 1)?;
+            let low = *bytes.get(index + 2)?;
+            decoded.push((hex_digit(high)? << 4) | hex_digit(low)?);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn mime_type(path: &str) -> &'static str {
-    match path.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+    match path
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "html" => "text/html; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "js" | "mjs" => "application/javascript; charset=utf-8",
         "json" | "map" => "application/json; charset=utf-8",
+        "webmanifest" => "application/manifest+json",
+        "xml" => "application/xml",
+        "txt" => "text/plain; charset=utf-8",
+        "csv" => "text/csv; charset=utf-8",
+        "pdf" => "application/pdf",
         "svg" => "image/svg+xml",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
         "webp" => "image/webp",
+        "avif" => "image/avif",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        "heic" => "image/heic",
         "ico" => "image/x-icon",
         "wasm" => "application/wasm",
         "woff" => "font/woff",
         "woff2" => "font/woff2",
         "ttf" => "font/ttf",
         "otf" => "font/otf",
+        "eot" => "application/vnd.ms-fontobject",
+        "mp4" | "m4v" => "video/mp4",
+        "mpeg" | "mpg" => "video/mpeg",
+        "avi" => "video/x-msvideo",
+        "mkv" => "video/x-matroska",
+        "3gp" => "video/3gpp",
+        "webm" => "video/webm",
+        "ogv" => "video/ogg",
+        "mov" => "video/quicktime",
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "aac" => "audio/aac",
+        "wav" => "audio/wav",
+        "oga" | "ogg" => "audio/ogg",
+        "flac" => "audio/flac",
+        "opus" => "audio/opus",
         _ => "application/octet-stream",
     }
 }
