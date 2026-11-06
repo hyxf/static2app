@@ -1,65 +1,42 @@
-name: Release Action
+name: Release Static2App Action
 
 on:
   push:
     tags:
-      - "v*" # 当你推送 v1.0.1, v1.0.2 等标签时触发
+      - "v*"
 
 permissions:
-  contents: write # 必须有这个权限才能更新 tag
+  contents: read
 
 jobs:
   release:
+    name: Validate Rust build and update major tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: true
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Validate action.yml
+      - name: Validate Action manifest
+        shell: bash
         run: |
-          if [ ! -f action/action.yml ]; then
-            echo "❌ action/action.yml not found"
-            exit 1
-          fi
-          echo "✅ action.yml exists"
+          set -euo pipefail
+          test -f action/action.yml
+          echo "action/action.yml exists"
 
-      - name: Self test (build)
+      - name: Build Rust executable
+        run: cargo build --release --locked
+
+      - name: Update v1 major tag
+        if: startsWith(github.ref_name, 'v1.')
+        shell: bash
         run: |
-          set -e
-
-          # 1. 准备测试数据
-          mkdir -p demo-dist
-          echo '<h1>Test Build</h1>' > demo-dist/index.html
-
-          # 2. 【核心修复】先确保目录存在，防止 cp 报错
-          # 你的原代码这里如果 static 不存在会直接挂掉
-          rm -rf static
-          mkdir -p static
-          cp -R demo-dist/* static/
-
-          # 3. 尝试构建 (模拟真实环境禁用 CGO)
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.Version=test" -o /tmp/static2app-test
-
-          # 4. 验证是否能运行查看版本
-          /tmp/static2app-test -version || true
-
-          echo "✅ Self test passed"
-
-      - name: Update major version tag (v1)
-        # 只有当发布的 tag 是 v1 开头时（比如 v1.0.5）才更新 v1 标签
-        # 防止你以后发 v2.0 时错误地更新了 v1
-        if: startsWith(github.ref_name, 'v1')
-        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # 强制将 v1 标签移动到当前 commit
-          git tag -f v1
-          git push origin v1 --force
-          echo "✅ Updated v1 tag to point to ${{ github.ref_name }}"
+          git tag --force v1 "$GITHUB_SHA"
+          git push origin refs/tags/v1 --force

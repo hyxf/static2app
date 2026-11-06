@@ -1,37 +1,90 @@
-name: Package with Static2App
+name: Build and release Static2App
+
 on:
   push:
     tags:
       - "v*"
+
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  publish:
-    # Use a native runner for each platform you want to publish.
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://registry.npmjs.org
-      - run: npm install
-      - run: npm run build
+          cache: npm
 
-      - name: Package with Static2App
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+
+  package:
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux
+          - runner: macos-latest
+            platform: macos
+          - runner: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Package static site
         id: package
         uses: hyxf/static2app/action@v1
         with:
           dist-dir: dist
-          binary-name: svg-editor
-          # version: 1.0.0  # Optional: override git tag
+          binary-name: my-app
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Name platform checksum file
+        shell: bash
+        env:
+          PACKAGE_DIR: ${{ steps.package.outputs.dist-dir }}
+          PLATFORM: ${{ matrix.platform }}
+        run: mv "$PACKAGE_DIR/checksums.txt" "$PACKAGE_DIR/checksums-$PLATFORM.txt"
+
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
-            ${{ steps.package.outputs.dist-dir }}/*
-          draft: false
-          prerelease: false
+          name: release-${{ matrix.platform }}
+          path: ${{ steps.package.outputs.dist-dir }}/*
+          if-no-files-found: error
+
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: release-assets/*
           generate_release_notes: true
